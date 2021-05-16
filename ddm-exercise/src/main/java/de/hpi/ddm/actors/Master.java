@@ -1,9 +1,7 @@
 package de.hpi.ddm.actors;
 
 import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
 
 import akka.actor.AbstractLoggingActor;
 import akka.actor.ActorRef;
@@ -22,6 +20,7 @@ public class Master extends AbstractLoggingActor {
 	////////////////////////
 	
 	public static final String DEFAULT_NAME = "master";
+	private static final int REQUEST_MORE_LINES_ON_BUFFER_SIZE = 10;
 
 	public static Props props(final ActorRef reader, final ActorRef collector, final BloomFilter welcomeData) {
 		return Props.create(Master.class, () -> new Master(reader, collector, welcomeData));
@@ -50,6 +49,14 @@ public class Master extends AbstractLoggingActor {
 		private List<String[]> lines;
 	}
 
+	@Data @NoArgsConstructor @AllArgsConstructor
+	public static class PasswordCrackedMessage implements Serializable {
+		private static final long serialVersionUID = 8343040942748609598L;
+		private String password;
+		private int lineID;
+		private ActorRef sender;
+	}
+
 	@Data
 	public static class RegistrationMessage implements Serializable {
 		private static final long serialVersionUID = 3303081601659723997L;
@@ -64,6 +71,11 @@ public class Master extends AbstractLoggingActor {
 	private final List<ActorRef> workers;
 	private final ActorRef largeMessageProxy;
 	private final BloomFilter welcomeData;
+	private LinkedList<ActorRef> idleWorkers = new LinkedList<>();
+	private LinkedList<String[]> lines = new LinkedList<>();
+	private String passwordChars = null;
+	private int passwordLength = 0;
+	private boolean readerIsEmpty = false;
 
 	private long startTime;
 	
@@ -85,6 +97,7 @@ public class Master extends AbstractLoggingActor {
 		return receiveBuilder()
 				.match(StartMessage.class, this::handle)
 				.match(BatchMessage.class, this::handle)
+				.match(PasswordCrackedMessage.class, this::handle)
 				.match(Terminated.class, this::handle)
 				.match(RegistrationMessage.class, this::handle)
 				// TODO: Add further messages here to share work between Master and Worker actors
@@ -96,6 +109,27 @@ public class Master extends AbstractLoggingActor {
 		this.startTime = System.currentTimeMillis();
 		
 		this.reader.tell(new Reader.ReadMessage(), this.self());
+	}
+
+	protected void assignTasksToIdleWorkers(){
+		int removedWorker = 0;
+		for (ActorRef idleWorker: idleWorkers) {
+			String[] line;
+			if ((line = lines.poll()) == null){
+				return;
+			}
+			removedWorker++;
+			idleWorker.tell(new PasswordCrackerWorker.TaskCrackPasswordMessage(Integer.parseInt(line[0]), passwordChars, passwordLength, line[4], Arrays.copyOfRange(line, 5, line.length)), this.self());
+		}
+		for (int i = 0; i < removedWorker; i++) {
+			idleWorkers.poll();
+		}
+		if (!readerIsEmpty && lines.size() <= REQUEST_MORE_LINES_ON_BUFFER_SIZE) {
+			this.reader.tell(new Reader.ReadMessage(), this.self());
+		}
+		if (readerIsEmpty && idleWorkers.size() == workers.size()){
+			this.terminate();
+		}
 	}
 	
 	protected void handle(BatchMessage message) {
@@ -116,19 +150,28 @@ public class Master extends AbstractLoggingActor {
 
 		// TODO: Stop fetching lines from the Reader once an empty BatchMessage was received; we have seen all data then
 		if (message.getLines().isEmpty()) {
-			this.terminate();
-			return;
+			passwordChars = null;
+			passwordLength = 0;
+			readerIsEmpty = true;
 		}
 		
 		// TODO: Process the lines with the help of the worker actors
-		for (String[] line : message.getLines())
+		// Add lines to buffer.
+		for (String[] line : message.getLines()){
+			if (passwordChars == null) {
+				passwordChars = line[2];
+				passwordLength = Integer.parseInt(line[3]);
+			}
+			lines.add(line);
 			this.log().error("Need help processing: {}", Arrays.toString(line));
+		}
+		assignTasksToIdleWorkers();
 		
 		// TODO: Send (partial) results to the Collector
-		this.collector.tell(new Collector.CollectMessage("If I had results, this would be one."), this.self());
+		//this.collector.tell(new Collector.CollectMessage("If I had results, this would be one."), this.self());
 		
 		// TODO: Fetch further lines from the Reader
-		this.reader.tell(new Reader.ReadMessage(), this.self());
+		//c
 		
 	}
 	
@@ -152,9 +195,10 @@ public class Master extends AbstractLoggingActor {
 	protected void handle(RegistrationMessage message) {
 		this.context().watch(this.sender());
 		this.workers.add(this.sender());
+		this.idleWorkers.add(this.sender());
 		this.log().info("Registered {}", this.sender());
 		
-		this.largeMessageProxy.tell(new LargeMessageProxy.LargeMessage<>(new Worker.WelcomeMessage(this.welcomeData), this.sender()), this.self());
+		this.largeMessageProxy.tell(new LargeMessageProxy.LargeMessage<>(new PasswordCrackerWorker.WelcomeMessage(this.welcomeData), this.sender()), this.self());
 		
 		// TODO: Assign some work to registering workers. Note that the processing of the global task might have already started.
 	}
@@ -163,5 +207,11 @@ public class Master extends AbstractLoggingActor {
 		this.context().unwatch(message.getActor());
 		this.workers.remove(message.getActor());
 		this.log().info("Unregistered {}", message.getActor());
+	}
+
+	protected void handle(PasswordCrackedMessage message) {
+		this.collector.tell(new Collector.CollectMessage(message.getPassword(), message.getLineID()), this.self());
+		idleWorkers.add(message.getSender());
+		assignTasksToIdleWorkers();
 	}
 }

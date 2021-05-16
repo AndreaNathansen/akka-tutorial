@@ -6,10 +6,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.List;
 
-import akka.actor.AbstractLoggingActor;
-import akka.actor.ActorRef;
-import akka.actor.PoisonPill;
-import akka.actor.Props;
+import akka.actor.*;
 import akka.cluster.Cluster;
 import akka.cluster.ClusterEvent.CurrentClusterState;
 import akka.cluster.ClusterEvent.MemberRemoved;
@@ -22,7 +19,7 @@ import lombok.NoArgsConstructor;
 import akka.cluster.Member;
 import akka.cluster.MemberStatus;
 
-public class Worker extends AbstractLoggingActor {
+public class PasswordCrackerWorker extends AbstractLoggingActor {
 
 	////////////////////////
 	// Actor Construction //
@@ -31,11 +28,12 @@ public class Worker extends AbstractLoggingActor {
 	public static final String DEFAULT_NAME = "worker";
 
 	public static Props props() {
-		return Props.create(Worker.class);
+		return Props.create(PasswordCrackerWorker.class);
 	}
 
-	public Worker() {
+	public PasswordCrackerWorker() {
 		this.cluster = Cluster.get(this.context().system());
+		// TODO: create unique proxy (= with unique name) for each worker
 		this.largeMessageProxy = this.context().actorOf(LargeMessageProxy.props(), LargeMessageProxy.DEFAULT_NAME);
 	}
 	
@@ -44,9 +42,25 @@ public class Worker extends AbstractLoggingActor {
 	////////////////////
 
 	@Data @NoArgsConstructor @AllArgsConstructor
+	public static class TaskCrackPasswordMessage implements Serializable {
+		private static final long serialVersionUID = 100000000000000L;
+		private int lineID;
+		private String passwordChars;
+		private int passwordLength;
+		private String password;
+		private String[] hints;
+	}
+
+	@Data @NoArgsConstructor @AllArgsConstructor
 	public static class WelcomeMessage implements Serializable {
 		private static final long serialVersionUID = 8343040942748609598L;
 		private BloomFilter welcomeData;
+	}
+
+	@Data @NoArgsConstructor @AllArgsConstructor
+	public static class HintCrackedMessage implements Serializable {
+		private static final long serialVersionUID = 8343040942748609598L;
+		private char hint;
 	}
 	
 	/////////////////
@@ -57,6 +71,12 @@ public class Worker extends AbstractLoggingActor {
 	private final Cluster cluster;
 	private final ActorRef largeMessageProxy;
 	private long registrationTime;
+	private int lineID;
+	private String passwordChars;
+	private int passwordLength;
+	private String password;
+	private String[] hints;
+	private int numHintsCracked = 0;
 	
 	/////////////////////
 	// Actor Lifecycle //
@@ -78,6 +98,13 @@ public class Worker extends AbstractLoggingActor {
 	// Actor Behavior //
 	////////////////////
 
+	private void startCracking(){
+		numHintsCracked = 0;
+		for(int i = 0; i < hints.length; i++) {
+			this.context().actorOf(HintCrackingWorker.props(hints[i]), HintCrackingWorker.DEFAULT_NAME + "_" + lineID + "_" + i);
+		}
+	}
+
 	@Override
 	public Receive createReceive() {
 		return receiveBuilder()
@@ -85,7 +112,9 @@ public class Worker extends AbstractLoggingActor {
 				.match(MemberUp.class, this::handle)
 				.match(MemberRemoved.class, this::handle)
 				.match(WelcomeMessage.class, this::handle)
+				.match(HintCrackedMessage.class, this::handle)
 				// TODO: Add further messages here to share work between Master and Worker actors
+				.match(TaskCrackPasswordMessage.class, this::handle)
 				.matchAny(object -> this.log().info("Received unknown message: \"{}\"", object.toString()))
 				.build();
 	}
@@ -101,12 +130,26 @@ public class Worker extends AbstractLoggingActor {
 		this.register(message.member());
 	}
 
+	private void handle(TaskCrackPasswordMessage message){
+		this.log().info("Start cracking password");
+		lineID = message.lineID;
+		passwordChars = message.passwordChars;
+		passwordLength = message.passwordLength;
+		password = message.password;
+		hints = message.hints;
+		startCracking();
+	}
+
+	private ActorSelection getMasterActorRef(){
+		return this.getContext()
+				.actorSelection(masterSystem.address() + "/user/" + Master.DEFAULT_NAME);
+	}
+
 	private void register(Member member) {
 		if ((this.masterSystem == null) && member.hasRole(MasterSystem.MASTER_ROLE)) {
 			this.masterSystem = member;
 			
-			this.getContext()
-				.actorSelection(member.address() + "/user/" + Master.DEFAULT_NAME)
+			this.getMasterActorRef()
 				.tell(new Master.RegistrationMessage(), this.self());
 			
 			this.registrationTime = System.currentTimeMillis();
@@ -117,10 +160,26 @@ public class Worker extends AbstractLoggingActor {
 		if (this.masterSystem.equals(message.member()))
 			this.self().tell(PoisonPill.getInstance(), ActorRef.noSender());
 	}
+
+	private void handle(HintCrackedMessage message) {
+		numHintsCracked++;
+		passwordChars = passwordChars.replace("" + message.hint, "");
+
+		if (numHintsCracked == hints.length) {
+			this.startPasswordCracking();
+		}
+	}
 	
 	private void handle(WelcomeMessage message) {
 		final long transmissionTime = System.currentTimeMillis() - this.registrationTime;
 		this.log().info("WelcomeMessage with " + message.getWelcomeData().getSizeInMB() + " MB data received in " + transmissionTime + " ms.");
+	}
+
+	private void startPasswordCracking(){
+		// Todo Crack magic.
+		String password = "";
+
+		this.getMasterActorRef().tell(new Master.PasswordCrackedMessage(password, lineID, this.self()), this.self());
 	}
 	
 	private String hash(String characters) {

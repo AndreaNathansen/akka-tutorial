@@ -30,6 +30,7 @@ public class Collector extends AbstractLoggingActor {
 	public static class CollectMessage implements Serializable {
 		private static final long serialVersionUID = -102767440935270949L;
 		private String result;
+		private int lineID;
 	}
 
 	@Data
@@ -70,6 +71,7 @@ public class Collector extends AbstractLoggingActor {
 	}
 	
 	protected void handle(PrintMessage message) {
+		// TODO: sort by ID before printing to keep order of lines
 		this.results.forEach(result -> this.log().info("{}", result));
 	}
 }
