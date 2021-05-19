@@ -2,6 +2,7 @@ package de.hpi.ddm.actors;
 
 import akka.actor.AbstractLoggingActor;
 import akka.actor.ActorRef;
+import akka.actor.PoisonPill;
 import akka.actor.Props;
 import akka.cluster.Cluster;
 import akka.cluster.ClusterEvent;
@@ -76,13 +77,17 @@ public class HintCrackingWorker extends AbstractLoggingActor {
                 }
             }
         }
+        this.log().error("Could not crack hint: " + hint + "!");
         throw new IllegalStateException("Could not Crack Hint: " + hint + "!");
     }
 
     private void crackHint(){
         char hintCharacter = getHintCharacter();
-
+        this.log().info("Cracked hint!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! " + hintCharacter);
         this.context().parent().tell(new PasswordCrackingWorker.HintCrackedMessage(hintCharacter), this.self());
+        this.log().info("Sent hint!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! " + hintCharacter);
+        // TODO: add error handling if cracking failed.
+        this.self().tell(PoisonPill.getInstance(), ActorRef.noSender());
     }
 
 

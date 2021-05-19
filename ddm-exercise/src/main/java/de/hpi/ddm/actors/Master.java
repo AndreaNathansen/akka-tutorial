@@ -128,6 +128,7 @@ public class Master extends AbstractLoggingActor {
 			this.reader.tell(new Reader.ReadMessage(), this.self());
 		}
 		if (readerIsEmpty && idleWorkers.size() == workers.size()){
+			this.collector.tell(new Collector.PrintMessage(), this.self());
 			this.terminate();
 		}
 	}
@@ -163,7 +164,6 @@ public class Master extends AbstractLoggingActor {
 				passwordLength = Integer.parseInt(line[3]);
 			}
 			lines.add(line);
-			this.log().error("Need help processing: {}", Arrays.toString(line));
 		}
 		assignTasksToIdleWorkers();
 		
@@ -206,10 +206,15 @@ public class Master extends AbstractLoggingActor {
 	protected void handle(Terminated message) {
 		this.context().unwatch(message.getActor());
 		this.workers.remove(message.getActor());
+		if (this.idleWorkers.contains(message.getActor())) {
+			this.idleWorkers.remove(message.getActor());
+		}
+		// TODO: also re-assign password if worker was working on it
 		this.log().info("Unregistered {}", message.getActor());
 	}
 
 	protected void handle(PasswordCrackedMessage message) {
+		this.log().info("Received cracked password: " + message.password + " line: " + message.lineID);
 		this.collector.tell(new Collector.CollectMessage(message.getPassword(), message.getLineID()), this.self());
 		idleWorkers.add(message.getSender());
 		assignTasksToIdleWorkers();

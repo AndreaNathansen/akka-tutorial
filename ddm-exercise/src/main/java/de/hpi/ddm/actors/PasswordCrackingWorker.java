@@ -37,7 +37,7 @@ public class PasswordCrackingWorker extends AbstractLoggingActor {
 		// TODO: create unique proxy (= with unique name) for each worker
 		this.largeMessageProxy = this.context().actorOf(LargeMessageProxy.props(), LargeMessageProxy.DEFAULT_NAME);
 	}
-	
+
 	////////////////////
 	// Actor Messages //
 	////////////////////
@@ -103,9 +103,11 @@ public class PasswordCrackingWorker extends AbstractLoggingActor {
 	private void startCracking(){
 		numHintsCracked = 0;
 		for(int i = 0; i < hints.length; i++) {
+			this.log().info("Starting HintCrackingWorker for hint " + i + " : " + hints[i]);
 			this.context().actorOf(HintCrackingWorker.props(hints[i], passwordChars), HintCrackingWorker.DEFAULT_NAME + "_" + lineID + "_" + i);
 		}
 	}
+	// TODO: handle unregistration of HintCrackingWorkers and assign tasks to new worker
 
 	@Override
 	public Receive createReceive() {
@@ -181,6 +183,7 @@ public class PasswordCrackingWorker extends AbstractLoggingActor {
 	private void startPasswordCracking(){
 		iterateAllCombinations(passwordChars.toCharArray(), passwordLength);
 		if (crackedPassword == null){
+			this.log().error("Could not crack password: " + password + "!");
 			throw new IllegalStateException("Could not crack password: " + password + "!");
 		}
 
@@ -192,7 +195,7 @@ public class PasswordCrackingWorker extends AbstractLoggingActor {
 	// possible strings of length k.
 	// It is mainly a wrapper over
 	// recursive function printAllKLengthRec()
-	private void iterateAllCombinations(char[] set, int k)
+	public void iterateAllCombinations(char[] set, int k)
 	{
 		int n = set.length;
 		iterateAllCombinations(set, "", n, k);
@@ -201,7 +204,7 @@ public class PasswordCrackingWorker extends AbstractLoggingActor {
 	// The main recursive method
 	// to print all possible
 	// strings of length k
-	private void iterateAllCombinations(char[] set,
+	public void iterateAllCombinations(char[] set,
 								   String prefix,
 								   int n, int k)
 	{
