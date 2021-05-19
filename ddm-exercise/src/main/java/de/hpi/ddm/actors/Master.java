@@ -119,7 +119,7 @@ public class Master extends AbstractLoggingActor {
 				return;
 			}
 			removedWorker++;
-			idleWorker.tell(new PasswordCrackerWorker.TaskCrackPasswordMessage(Integer.parseInt(line[0]), passwordChars, passwordLength, line[4], Arrays.copyOfRange(line, 5, line.length)), this.self());
+			idleWorker.tell(new PasswordCrackingWorker.TaskCrackPasswordMessage(Integer.parseInt(line[0]), passwordChars, passwordLength, line[4], Arrays.copyOfRange(line, 5, line.length)), this.self());
 		}
 		for (int i = 0; i < removedWorker; i++) {
 			idleWorkers.poll();
@@ -198,7 +198,7 @@ public class Master extends AbstractLoggingActor {
 		this.idleWorkers.add(this.sender());
 		this.log().info("Registered {}", this.sender());
 		
-		this.largeMessageProxy.tell(new LargeMessageProxy.LargeMessage<>(new PasswordCrackerWorker.WelcomeMessage(this.welcomeData), this.sender()), this.self());
+		this.largeMessageProxy.tell(new LargeMessageProxy.LargeMessage<>(new PasswordCrackingWorker.WelcomeMessage(this.welcomeData), this.sender()), this.self());
 		
 		// TODO: Assign some work to registering workers. Note that the processing of the global task might have already started.
 	}

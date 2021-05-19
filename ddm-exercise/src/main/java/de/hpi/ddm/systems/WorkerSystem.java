@@ -9,7 +9,7 @@ import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
 import akka.cluster.Cluster;
 import de.hpi.ddm.actors.Reaper;
-import de.hpi.ddm.actors.PasswordCrackerWorker;
+import de.hpi.ddm.actors.PasswordCrackingWorker;
 import de.hpi.ddm.configuration.Configuration;
 import de.hpi.ddm.singletons.ConfigurationSingleton;
 import scala.concurrent.Await;
@@ -40,7 +40,7 @@ public class WorkerSystem {
 			@Override
 			public void run() {
 				for (int i = 0; i < c.getNumWorkers(); i++)
-					system.actorOf(PasswordCrackerWorker.props(), PasswordCrackerWorker.DEFAULT_NAME + i);
+					system.actorOf(PasswordCrackingWorker.props(), PasswordCrackingWorker.DEFAULT_NAME + i);
 			}
 		});
 

@@ -13,7 +13,7 @@ import de.hpi.ddm.actors.Collector;
 import de.hpi.ddm.actors.Master;
 import de.hpi.ddm.actors.Reader;
 import de.hpi.ddm.actors.Reaper;
-import de.hpi.ddm.actors.PasswordCrackerWorker;
+import de.hpi.ddm.actors.PasswordCrackingWorker;
 import de.hpi.ddm.configuration.Configuration;
 import de.hpi.ddm.singletons.ConfigurationSingleton;
 import scala.concurrent.Await;
@@ -50,7 +50,7 @@ public class MasterSystem {
 			@Override
 			public void run() {
 				for (int i = 0; i < c.getNumWorkers(); i++)
-					system.actorOf(PasswordCrackerWorker.props(), PasswordCrackerWorker.DEFAULT_NAME + i);
+					system.actorOf(PasswordCrackingWorker.props(), PasswordCrackingWorker.DEFAULT_NAME + i);
 				
 				if (!c.isStartPaused())
 					system.actorSelection("/user/" + Master.DEFAULT_NAME).tell(new Master.StartMessage(), ActorRef.noSender());

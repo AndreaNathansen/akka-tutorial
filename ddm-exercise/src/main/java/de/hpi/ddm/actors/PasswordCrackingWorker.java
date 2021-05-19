@@ -13,13 +13,14 @@ import akka.cluster.ClusterEvent.MemberRemoved;
 import akka.cluster.ClusterEvent.MemberUp;
 import de.hpi.ddm.structures.BloomFilter;
 import de.hpi.ddm.systems.MasterSystem;
+import de.hpi.ddm.actors.utils.Util;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import akka.cluster.Member;
 import akka.cluster.MemberStatus;
 
-public class PasswordCrackerWorker extends AbstractLoggingActor {
+public class PasswordCrackingWorker extends AbstractLoggingActor {
 
 	////////////////////////
 	// Actor Construction //
@@ -28,10 +29,10 @@ public class PasswordCrackerWorker extends AbstractLoggingActor {
 	public static final String DEFAULT_NAME = "worker";
 
 	public static Props props() {
-		return Props.create(PasswordCrackerWorker.class);
+		return Props.create(PasswordCrackingWorker.class);
 	}
 
-	public PasswordCrackerWorker() {
+	public PasswordCrackingWorker() {
 		this.cluster = Cluster.get(this.context().system());
 		// TODO: create unique proxy (= with unique name) for each worker
 		this.largeMessageProxy = this.context().actorOf(LargeMessageProxy.props(), LargeMessageProxy.DEFAULT_NAME);
@@ -77,6 +78,7 @@ public class PasswordCrackerWorker extends AbstractLoggingActor {
 	private String password;
 	private String[] hints;
 	private int numHintsCracked = 0;
+	private String crackedPassword = null;
 	
 	/////////////////////
 	// Actor Lifecycle //
@@ -101,7 +103,7 @@ public class PasswordCrackerWorker extends AbstractLoggingActor {
 	private void startCracking(){
 		numHintsCracked = 0;
 		for(int i = 0; i < hints.length; i++) {
-			this.context().actorOf(HintCrackingWorker.props(hints[i]), HintCrackingWorker.DEFAULT_NAME + "_" + lineID + "_" + i);
+			this.context().actorOf(HintCrackingWorker.props(hints[i], passwordChars), HintCrackingWorker.DEFAULT_NAME + "_" + lineID + "_" + i);
 		}
 	}
 
@@ -137,6 +139,7 @@ public class PasswordCrackerWorker extends AbstractLoggingActor {
 		passwordLength = message.passwordLength;
 		password = message.password;
 		hints = message.hints;
+		crackedPassword = null;
 		startCracking();
 	}
 
@@ -176,52 +179,63 @@ public class PasswordCrackerWorker extends AbstractLoggingActor {
 	}
 
 	private void startPasswordCracking(){
-		// Todo Crack magic.
-		String password = "";
+		iterateAllCombinations(passwordChars.toCharArray(), passwordLength);
+		if (crackedPassword == null){
+			throw new IllegalStateException("Could not crack password: " + password + "!");
+		}
 
-		this.getMasterActorRef().tell(new Master.PasswordCrackedMessage(password, lineID, this.self()), this.self());
+		this.getMasterActorRef().tell(new Master.PasswordCrackedMessage(crackedPassword, lineID, this.self()), this.self());
+	}
+
+	// original: https://www.geeksforgeeks.org/print-all-combinations-of-given-length/
+	// The method that prints all
+	// possible strings of length k.
+	// It is mainly a wrapper over
+	// recursive function printAllKLengthRec()
+	private void iterateAllCombinations(char[] set, int k)
+	{
+		int n = set.length;
+		iterateAllCombinations(set, "", n, k);
+	}
+
+	// The main recursive method
+	// to print all possible
+	// strings of length k
+	private void iterateAllCombinations(char[] set,
+								   String prefix,
+								   int n, int k)
+	{
+		if(crackedPassword != null){
+			return;
+		}
+
+		// Base case: k is 0,
+		// print prefix
+		if (k == 0)
+		{
+			if (Util.hash(prefix).equals(password)){
+				crackedPassword = prefix;
+			}
+			return;
+		}
+
+		// One by one add all characters
+		// from set and recursively
+		// call for k equals to k-1
+		for (int i = 0; i < n; ++i)
+		{
+
+			// Next character of input added
+			String newPrefix = prefix + set[i];
+
+			// k is decreased, because
+			// we have added a new character
+			iterateAllCombinations(set, newPrefix,
+					n, k - 1);
+		}
 	}
 	
-	private String hash(String characters) {
-		try {
-			MessageDigest digest = MessageDigest.getInstance("SHA-256");
-			byte[] hashedBytes = digest.digest(String.valueOf(characters).getBytes("UTF-8"));
-			
-			StringBuffer stringBuffer = new StringBuffer();
-			for (int i = 0; i < hashedBytes.length; i++) {
-				stringBuffer.append(Integer.toString((hashedBytes[i] & 0xff) + 0x100, 16).substring(1));
-			}
-			return stringBuffer.toString();
-		}
-		catch (NoSuchAlgorithmException | UnsupportedEncodingException e) {
-			throw new RuntimeException(e.getMessage());
-		}
-	}
+
 	
-	// Generating all permutations of an array using Heap's Algorithm
-	// https://en.wikipedia.org/wiki/Heap's_algorithm
-	// https://www.geeksforgeeks.org/heaps-algorithm-for-generating-permutations/
-	private void heapPermutation(char[] a, int size, int n, List<String> l) {
-		// If size is 1, store the obtained permutation
-		if (size == 1)
-			l.add(new String(a));
 
-		for (int i = 0; i < size; i++) {
-			heapPermutation(a, size - 1, n, l);
-
-			// If size is odd, swap first and last element
-			if (size % 2 == 1) {
-				char temp = a[0];
-				a[0] = a[size - 1];
-				a[size - 1] = temp;
-			}
-
-			// If size is even, swap i-th and last element
-			else {
-				char temp = a[i];
-				a[i] = a[size - 1];
-				a[size - 1] = temp;
-			}
-		}
-	}
 }
