@@ -22,8 +22,8 @@ import de.hpi.ddm.systems.MasterSystem;
 
 public class HintCrackingWorkerTest {
     static ActorSystem system;
-    private static final String hintHash = "1582824a01c4b842e207a51e3cfc47212885e58eb147e33ea29ba212e611904d";
-    private static final char crackedHint = 'A';
+    private static final String hintHash = "52be0093f91b90872aa54533b8ee9b38f794999bae9371834eca23ce51139b99";
+    private static final char crackedHint = 'C';
     private static final String passwordChars = "ABCDEFGHIJK";
 
     static class TestActor extends AbstractLoggingActor {
@@ -76,7 +76,7 @@ public class HintCrackingWorkerTest {
         // Tests if a hint is cracked correctly
         new TestKit(system) {
             {
-                within(Duration.ofSeconds(10), () -> {
+                within(Duration.ofSeconds(200), () -> {
                     ActorRef testActor = system.actorOf(HintCrackingWorkerTest.TestActor.props(this.getRef()), "testActor");
                     PasswordCrackingWorker.HintCrackedMessage expectedMessage = new PasswordCrackingWorker.HintCrackedMessage(crackedHint);
                     this.expectMsg(expectedMessage);

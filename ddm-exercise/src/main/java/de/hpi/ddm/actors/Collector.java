@@ -2,10 +2,12 @@ package de.hpi.ddm.actors;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 import akka.actor.AbstractLoggingActor;
 import akka.actor.Props;
+import akka.japi.Pair;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -42,7 +44,7 @@ public class Collector extends AbstractLoggingActor {
 	// Actor State //
 	/////////////////
 	
-	private List<String> results = new ArrayList<>();
+	private List<Pair<String, Integer>> results = new ArrayList<>();
 	
 	/////////////////////
 	// Actor Lifecycle //
@@ -67,11 +69,12 @@ public class Collector extends AbstractLoggingActor {
 	}
 
 	protected void handle(CollectMessage message) {
-		this.results.add(message.getResult());
+		this.log().info("Collector received password");
+		this.results.add(new Pair<>(message.getResult(), message.getLineID()));
 	}
 	
 	protected void handle(PrintMessage message) {
-		// TODO: sort by ID before printing to keep order of lines
-		this.results.forEach(result -> this.log().info("{}", result));
+		this.results.sort(Comparator.comparingInt(Pair::second));
+		this.results.forEach(result -> this.log().info("{}", result.first()));
 	}
 }

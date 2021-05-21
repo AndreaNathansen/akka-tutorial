@@ -40,7 +40,7 @@ public class WorkerSystem {
 			@Override
 			public void run() {
 				for (int i = 0; i < c.getNumWorkers(); i++)
-					system.actorOf(PasswordCrackingWorker.props(), PasswordCrackingWorker.DEFAULT_NAME + i);
+					system.actorOf(PasswordCrackingWorker.props(), PasswordCrackingWorker.DEFAULT_NAME + "_master_" + i);
 			}
 		});
 

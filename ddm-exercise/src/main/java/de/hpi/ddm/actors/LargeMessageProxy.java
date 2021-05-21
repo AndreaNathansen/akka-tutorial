@@ -4,11 +4,10 @@ import java.io.*;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.concurrent.Callable;
 
-import akka.actor.AbstractLoggingActor;
-import akka.actor.ActorRef;
-import akka.actor.ActorSelection;
-import akka.actor.Props;
+import akka.actor.*;
+import akka.serialization.JavaSerializer;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -90,8 +89,7 @@ public class LargeMessageProxy extends AbstractLoggingActor {
 		ActorRef sender = this.sender();
 		ActorRef receiver = largeMessage.getReceiver();
 		ActorSelection receiverProxy = this.context().actorSelection(receiver.path().child(DEFAULT_NAME));
-		
-		// TODO: Implement a protocol that transmits the potentially very large message object.
+
 		// The following code sends the entire message wrapped in a BytesMessage, which will definitely fail in a distributed setting if the message is large!
 		// Solution options:
 		// a) Split the message into smaller batches of fixed size and send the batches via ...
@@ -118,12 +116,6 @@ public class LargeMessageProxy extends AbstractLoggingActor {
 			chunkID++;
 		}
 	}
-
-	/*private void handle(BytesMessage<?> message) {
-		// TODO: With option a): Store the message, ask for the next chunk and, if all chunks are present, reassemble the message's content, deserialize it and pass it to the receiver.
-		// The following code assumes that the transmitted bytes are the original message, which they shouldn't be in your proper implementation ;-)
-		message.getReceiver().tell(message.getBytes(), message.getSender());
-	}*/
 
 	// Let it crash.
 	private void handle(BytesPartMessage message) throws IOException, ClassNotFoundException {
@@ -154,9 +146,12 @@ public class LargeMessageProxy extends AbstractLoggingActor {
 				}
 			}
 			// Deserialize object.
-			ByteArrayInputStream bis = new ByteArrayInputStream(largeMessageBytes);
-			ObjectInputStream ois = new ObjectInputStream(bis);
-			Object sendObject = ois.readObject();
+			Object sendObject = JavaSerializer.currentSystem().withValue( (ExtendedActorSystem) context().system(), (Callable<Object>) () -> {
+				ByteArrayInputStream bis = new ByteArrayInputStream(largeMessageBytes);
+				ObjectInputStream ois = new ObjectInputStream(bis);
+				return ois.readObject();
+			});
+
 
 			// Reset internal message buffer.
 			receivedBytePartLargeMessages.remove(messageId);

@@ -71,11 +71,12 @@ public class Master extends AbstractLoggingActor {
 	private final List<ActorRef> workers;
 	private final ActorRef largeMessageProxy;
 	private final BloomFilter welcomeData;
-	private LinkedList<ActorRef> idleWorkers = new LinkedList<>();
-	private LinkedList<String[]> lines = new LinkedList<>();
+	private final LinkedList<ActorRef> idleWorkers = new LinkedList<>();
+	private final LinkedList<String[]> lines = new LinkedList<>();
 	private String passwordChars = null;
 	private int passwordLength = 0;
 	private boolean readerIsEmpty = false;
+	private final HashMap<ActorRef, PasswordCrackingWorker.TaskCrackPasswordMessage> assignedTasks = new HashMap<>();
 
 	private long startTime;
 	
@@ -100,7 +101,6 @@ public class Master extends AbstractLoggingActor {
 				.match(PasswordCrackedMessage.class, this::handle)
 				.match(Terminated.class, this::handle)
 				.match(RegistrationMessage.class, this::handle)
-				// TODO: Add further messages here to share work between Master and Worker actors
 				.matchAny(object -> this.log().info("Received unknown message: \"{}\"", object.toString()))
 				.build();
 	}
@@ -116,10 +116,12 @@ public class Master extends AbstractLoggingActor {
 		for (ActorRef idleWorker: idleWorkers) {
 			String[] line;
 			if ((line = lines.poll()) == null){
-				return;
+				break;
 			}
 			removedWorker++;
-			idleWorker.tell(new PasswordCrackingWorker.TaskCrackPasswordMessage(Integer.parseInt(line[0]), passwordChars, passwordLength, line[4], Arrays.copyOfRange(line, 5, line.length)), this.self());
+			PasswordCrackingWorker.TaskCrackPasswordMessage newTask = new PasswordCrackingWorker.TaskCrackPasswordMessage(Integer.parseInt(line[0]), passwordChars, passwordLength, line[4], Arrays.copyOfRange(line, 5, line.length));
+			this.largeMessageProxy.tell(new LargeMessageProxy.LargeMessage<>(newTask, idleWorker), this.self());
+			assignedTasks.put(idleWorker, newTask);
 		}
 		for (int i = 0; i < removedWorker; i++) {
 			idleWorkers.poll();
@@ -128,14 +130,12 @@ public class Master extends AbstractLoggingActor {
 			this.reader.tell(new Reader.ReadMessage(), this.self());
 		}
 		if (readerIsEmpty && idleWorkers.size() == workers.size()){
-			this.collector.tell(new Collector.PrintMessage(), this.self());
 			this.terminate();
 		}
 	}
 	
 	protected void handle(BatchMessage message) {
-		
-		// TODO: This is where the task begins:
+
 		// - The Master received the first batch of input records.
 		// - To receive the next batch, we need to send another ReadMessage to the reader.
 		// - If the received BatchMessage is empty, we have seen all data for this task.
@@ -149,14 +149,10 @@ public class Master extends AbstractLoggingActor {
 		// b) Memory reduction: If the batches are processed sequentially, the memory consumption can be kept constant; if the entire input is read into main memory, the memory consumption scales at least linearly with the input size.
 		// - It is your choice, how and if you want to make use of the batched inputs. Simply aggregate all batches in the Master and start the processing afterwards, if you wish.
 
-		// TODO: Stop fetching lines from the Reader once an empty BatchMessage was received; we have seen all data then
 		if (message.getLines().isEmpty()) {
-			passwordChars = null;
-			passwordLength = 0;
 			readerIsEmpty = true;
 		}
-		
-		// TODO: Process the lines with the help of the worker actors
+
 		// Add lines to buffer.
 		for (String[] line : message.getLines()){
 			if (passwordChars == null) {
@@ -166,13 +162,6 @@ public class Master extends AbstractLoggingActor {
 			lines.add(line);
 		}
 		assignTasksToIdleWorkers();
-		
-		// TODO: Send (partial) results to the Collector
-		//this.collector.tell(new Collector.CollectMessage("If I had results, this would be one."), this.self());
-		
-		// TODO: Fetch further lines from the Reader
-		//c
-		
 	}
 	
 	protected void terminate() {
@@ -199,23 +188,32 @@ public class Master extends AbstractLoggingActor {
 		this.log().info("Registered {}", this.sender());
 		
 		this.largeMessageProxy.tell(new LargeMessageProxy.LargeMessage<>(new PasswordCrackingWorker.WelcomeMessage(this.welcomeData), this.sender()), this.self());
-		
-		// TODO: Assign some work to registering workers. Note that the processing of the global task might have already started.
 	}
 	
 	protected void handle(Terminated message) {
 		this.context().unwatch(message.getActor());
-		this.workers.remove(message.getActor());
-		if (this.idleWorkers.contains(message.getActor())) {
+		if (this.workers.contains(message.getActor())) {
+			this.workers.remove(message.getActor());
 			this.idleWorkers.remove(message.getActor());
+			PasswordCrackingWorker.TaskCrackPasswordMessage failedTask = this.assignedTasks.remove(message.getActor());
+			if(failedTask != null) {
+				ArrayList<String> originalLine = new ArrayList<>();
+				originalLine.add("" + failedTask.getLineID());
+				originalLine.add(passwordChars);
+				originalLine.add("" + passwordLength);
+				originalLine.add(failedTask.getPassword());
+				originalLine.addAll(Arrays.asList(failedTask.getHints()));
+				this.lines.add(originalLine.toArray(new String[0]));
+				assignTasksToIdleWorkers();
+			}
+			this.log().info("Unregistered {}", message.getActor());
 		}
-		// TODO: also re-assign password if worker was working on it
-		this.log().info("Unregistered {}", message.getActor());
 	}
 
 	protected void handle(PasswordCrackedMessage message) {
 		this.log().info("Received cracked password: " + message.password + " line: " + message.lineID);
 		this.collector.tell(new Collector.CollectMessage(message.getPassword(), message.getLineID()), this.self());
+		assignedTasks.remove(message.getSender());
 		idleWorkers.add(message.getSender());
 		assignTasksToIdleWorkers();
 	}

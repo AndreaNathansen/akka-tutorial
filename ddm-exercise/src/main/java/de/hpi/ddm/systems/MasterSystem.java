@@ -50,7 +50,7 @@ public class MasterSystem {
 			@Override
 			public void run() {
 				for (int i = 0; i < c.getNumWorkers(); i++)
-					system.actorOf(PasswordCrackingWorker.props(), PasswordCrackingWorker.DEFAULT_NAME + i);
+					system.actorOf(PasswordCrackingWorker.props(), PasswordCrackingWorker.DEFAULT_NAME + "_master_" + i);
 				
 				if (!c.isStartPaused())
 					system.actorSelection("/user/" + Master.DEFAULT_NAME).tell(new Master.StartMessage(), ActorRef.noSender());
