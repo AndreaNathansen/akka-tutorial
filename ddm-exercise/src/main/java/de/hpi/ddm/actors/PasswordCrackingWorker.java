@@ -187,11 +187,15 @@ public class PasswordCrackingWorker extends AbstractLoggingActor {
         startCracking();
     }
 
+    private ActorSelection getMasterActorSelection(){
+        return this.getContext().actorSelection(masterSystem.address() + "/user/" + Master.DEFAULT_NAME);
+    }
+
     private ActorRef getMasterActorRef() {
         Duration timeout = Duration.ofSeconds(600);
         if (masterRef == null) {
             try {
-                masterRef = this.getContext().actorSelection(masterSystem.address() + "/user/" + Master.DEFAULT_NAME).resolveOne(timeout).toCompletableFuture().get();
+                masterRef = getMasterActorSelection().resolveOne(timeout).toCompletableFuture().get();
             } catch (InterruptedException | ExecutionException e) {
                 e.printStackTrace();
                 throw new IllegalStateException("Could not connect to Master.");
@@ -204,7 +208,7 @@ public class PasswordCrackingWorker extends AbstractLoggingActor {
         if ((this.masterSystem == null) && member.hasRole(MasterSystem.MASTER_ROLE)) {
             this.masterSystem = member;
 
-            this.getMasterActorRef()
+            this.getMasterActorSelection()
                     .tell(new Master.RegistrationMessage(), this.self());
 
             this.registrationTime = System.currentTimeMillis();
@@ -238,8 +242,11 @@ public class PasswordCrackingWorker extends AbstractLoggingActor {
                 break;
             case CRACKED:
                 Master.PasswordCrackedMessage passwordCrackedMessage = new Master.PasswordCrackedMessage(crackedPassword, lineID, this.self());
-                //this.getMasterActorRef().tell(passwordCrackedMessage, this.self());
-                this.largeMessageProxy.tell(new LargeMessageProxy.LargeMessage<>(passwordCrackedMessage, this.getMasterActorRef()), this.self());
+                //this.getMasterActorSelection().tell(passwordCrackedMessage, this.self());
+                ActorRef master = this.getMasterActorRef();
+                if(master != null){
+                    this.largeMessageProxy.tell(new LargeMessageProxy.LargeMessage<>(passwordCrackedMessage, master), this.self());
+                }
                 resetState();
                 break;
             case COULD_NOT_CRACK:

@@ -33,19 +33,13 @@ public class PasswordCrackingWorkerTest {
 
         public TestActor(ActorRef parent) {
             this.parent = parent;
-
+            this.largeMessageProxy = this.context().actorOf(LargeMessageProxy.props(), LargeMessageProxy.DEFAULT_NAME);
         }
 
-        ActorRef parent = null;
-
-        public ActorRef createPasswordCrackingWorker() {
-            return this.context().actorOf(PasswordCrackingWorker.props(), "passwordCrackingWorker");
-        }
-
-        public void sendTaskMessage(ActorRef passwordCrackingWorker){
+        ActorRef parent;
+        ActorRef largeMessageProxy;
 
 
-        }
 
         @Override
         public Receive createReceive() {
@@ -75,7 +69,7 @@ public class PasswordCrackingWorkerTest {
     }
 
     @Test
-    public void testHintCracking() {
+    public void testPasswordCracking() {
         // Tests if a hint is cracked correctly.
         new TestKit(system) {
             {   ActorRef testActor = system.actorOf(PasswordCrackingWorkerTest.TestActor.props(this.getRef()), Master.DEFAULT_NAME);
