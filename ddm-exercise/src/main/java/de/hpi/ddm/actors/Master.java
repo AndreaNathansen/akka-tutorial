@@ -187,7 +187,8 @@ public class Master extends AbstractLoggingActor {
 		this.idleWorkers.add(this.sender());
 		this.log().info("Registered {}", this.sender());
 		
-		this.largeMessageProxy.tell(new LargeMessageProxy.LargeMessage<>(new PasswordCrackingWorker.WelcomeMessage(this.welcomeData), this.sender()), this.self());
+		this.largeMessageProxy.tell(new LargeMessageProxy.LargeMessage<>(new PasswordCrackingWorker.WelcomeMessage(this.welcomeData, this.self()), this.sender()), this.self());
+		assignTasksToIdleWorkers();
 	}
 	
 	protected void handle(Terminated message) {

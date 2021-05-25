@@ -67,6 +67,7 @@ public class PasswordCrackingWorker extends AbstractLoggingActor {
     public static class WelcomeMessage implements Serializable {
         private static final long serialVersionUID = 8343040942748609598L;
         private BloomFilter welcomeData;
+        private ActorRef sender;
     }
 
     @Data
@@ -75,6 +76,8 @@ public class PasswordCrackingWorker extends AbstractLoggingActor {
     public static class HintCrackedMessage implements Serializable {
         private static final long serialVersionUID = 8343040942748609598L;
         private char hint;
+        private int index;
+        private String hintCracked;
     }
 
     @Data
@@ -132,10 +135,8 @@ public class PasswordCrackingWorker extends AbstractLoggingActor {
 
     private void startCracking() {
         numHintsCracked = 0;
-        for (int i = 0; i < hints.length; i++) {
-            this.log().info("Starting HintCrackingWorker: " + HintCrackingWorker.DEFAULT_NAME + "_" + lineID + "_" + i);
-            this.context().actorOf(HintCrackingWorker.props(hints[i], passwordChars), HintCrackingWorker.DEFAULT_NAME + "_" + lineID + "_" + i);
-        }
+        this.log().info("Starting HintCrackingWorker: " + HintCrackingWorker.DEFAULT_NAME + "_" + lineID);
+        this.context().actorOf(HintCrackingWorker.props(hints, passwordChars), HintCrackingWorker.DEFAULT_NAME + "_" + lineID);
     }
 
     @Override
@@ -232,6 +233,7 @@ public class PasswordCrackingWorker extends AbstractLoggingActor {
     private void handle(WelcomeMessage message) {
         final long transmissionTime = System.currentTimeMillis() - this.registrationTime;
         this.log().info("WelcomeMessage with " + message.getWelcomeData().getSizeInMB() + " MB data received in " + transmissionTime + " ms.");
+        masterRef = message.sender;
     }
 
     private void startPasswordCracking() {
