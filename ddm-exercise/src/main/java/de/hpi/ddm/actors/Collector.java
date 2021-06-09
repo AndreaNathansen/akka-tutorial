@@ -44,7 +44,7 @@ public class Collector extends AbstractLoggingActor {
 	// Actor State //
 	/////////////////
 	
-	private List<Pair<String, Integer>> results = new ArrayList<>();
+	private final List<Pair<String, Integer>> results = new ArrayList<>();
 	
 	/////////////////////
 	// Actor Lifecycle //

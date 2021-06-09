@@ -21,7 +21,7 @@ public class LargeMessageProxy extends AbstractLoggingActor {
 	public static final String DEFAULT_NAME = "largeMessageProxy";
 
 	//static int messageSize = 6 * 1024 * 1024;
-	static int messageSize = 262144 - 10;
+	static int messageSize = 262144 / 2; // Pi mal daumen offset, damit genug platz fuer die anderen member variablen in der message ist.
 	private int messageIDCounter= 0;
 	
 	public static Props props() {
@@ -123,7 +123,6 @@ public class LargeMessageProxy extends AbstractLoggingActor {
 		int chunkID = 0;
 		String msgID = this.getMessageID();
 		int numChunks =  (int) Math.ceil(serializedMessage.length / (double)messageSize);
-		System.out.println("size: " + numChunks);
 		BytesPartMessage[] msgs = new BytesPartMessage[numChunks];
 		for (int i = 0; i < serializedMessage.length; i += messageSize){
 			byte[] msg = Arrays.copyOfRange(serializedMessage, i, Math.min(i + messageSize, serializedMessage.length));
