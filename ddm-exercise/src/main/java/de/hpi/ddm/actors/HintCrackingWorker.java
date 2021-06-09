@@ -104,7 +104,7 @@ public class HintCrackingWorker extends AbstractLoggingActor {
             // If hint cracked, send hint and reset state.
             else if (crackedHint != null) {
                 char hintCharacter = passwordCharacters[currentPasswordIndex];
-                this.log().info("Cracked hint!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! " + hintCharacter);
+                //this.log().info("Cracked hint!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! " + hintCharacter);
                 this.context().parent().tell(new PasswordCrackingWorker.HintCrackedMessage(hintCharacter, crackedHint.index, crackedHint.permutation), this.self());
                 this.hintIndicesNotCrackedYet.remove(new Integer(crackedHint.index));
             }

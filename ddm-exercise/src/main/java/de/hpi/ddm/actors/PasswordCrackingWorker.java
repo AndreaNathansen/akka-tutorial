@@ -135,7 +135,7 @@ public class PasswordCrackingWorker extends AbstractLoggingActor {
 
     private void startCracking() {
         numHintsCracked = 0;
-        this.log().info("Starting HintCrackingWorker: " + HintCrackingWorker.DEFAULT_NAME + "_" + lineID);
+        //this.log().info("Starting HintCrackingWorker: " + HintCrackingWorker.DEFAULT_NAME + "_" + lineID);
         this.context().actorOf(HintCrackingWorker.props(hints, passwordChars), HintCrackingWorker.DEFAULT_NAME + "_" + lineID);
     }
 
@@ -177,7 +177,7 @@ public class PasswordCrackingWorker extends AbstractLoggingActor {
     }
 
     private void handle(TaskCrackPasswordMessage message) {
-        this.log().info("Start cracking password");
+        //this.log().info("Start cracking password");
         resetState();
         lineID = message.lineID;
         passwordChars = message.passwordChars;
