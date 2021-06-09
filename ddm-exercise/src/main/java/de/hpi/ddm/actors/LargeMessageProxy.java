@@ -20,7 +20,8 @@ public class LargeMessageProxy extends AbstractLoggingActor {
 
 	public static final String DEFAULT_NAME = "largeMessageProxy";
 
-	static int messageSize = 6 * 1024 * 1024;
+	//static int messageSize = 6 * 1024 * 1024;
+	static int messageSize = 262144 - 10;
 	private int messageIDCounter= 0;
 	
 	public static Props props() {
