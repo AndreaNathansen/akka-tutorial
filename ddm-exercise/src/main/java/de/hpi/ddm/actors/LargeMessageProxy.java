@@ -56,35 +56,46 @@ public class LargeMessageProxy extends AbstractLoggingActor {
 		private int chunkId;
 		private ActorRef sender;
 		private ActorRef receiver;
+		private ActorRef sendingProxy;
+	}
+
+	@Data @NoArgsConstructor @AllArgsConstructor
+	public static class ReceivedBytesPartMessage implements Serializable {
+		private static final long serialVersionUID = 1337L;
+		private String messageId;
+		private int chunkId;
+		private ActorRef sendingProxy;
 	}
 
 	private String getMessageID(){
-		return this.self().toString() + this.messageIDCounter++;
+		this.messageIDCounter = (this.messageIDCounter + 1) % Integer.MAX_VALUE;
+		return this.self().toString() + this.messageIDCounter;
 	}
-
-	private HashMap<String, byte [][]> receivedBytePartLargeMessages = new HashMap<>();
-	private HashMap<String, Integer> numBytesReceived = new HashMap<>();
 
 	/////////////////
 	// Actor State //
 	/////////////////
-	
+
+	private final HashMap<String, byte [][]> receivedBytePartLargeMessages = new HashMap<>();
+	private final HashMap<String, BytesPartMessage[]> msgsToSend = new HashMap<>();
+
 	/////////////////////
 	// Actor Lifecycle //
 	/////////////////////
-
-	////////////////////
-	// Actor Behavior //
-	////////////////////
 	
 	@Override
 	public Receive createReceive() {
 		return receiveBuilder()
 				.match(LargeMessage.class, this::handle)
 				.match(BytesPartMessage.class, this::handle)
+				.match(ReceivedBytesPartMessage.class, this::handle)
 				.matchAny(object -> this.log().info("Received unknown message: \"{}\"", object.toString()))
 				.build();
 	}
+
+	////////////////////
+	// Actor Behavior //
+	////////////////////
 
 	private void handle(LargeMessage<?> largeMessage) throws IOException {
 		ActorRef sender = this.sender();
@@ -110,29 +121,40 @@ public class LargeMessageProxy extends AbstractLoggingActor {
 			serializedMessage = bos.toByteArray();
 		}
 		int chunkID = 0;
+		String msgID = this.getMessageID();
 		int numChunks =  (int) Math.ceil(serializedMessage.length / (double)messageSize);
+		System.out.println("size: " + numChunks);
+		BytesPartMessage[] msgs = new BytesPartMessage[numChunks];
 		for (int i = 0; i < serializedMessage.length; i += messageSize){
 			byte[] msg = Arrays.copyOfRange(serializedMessage, i, Math.min(i + messageSize, serializedMessage.length));
-			receiverProxy.tell(new BytesPartMessage(msg, this.getMessageID(), numChunks, chunkID, sender, receiver), this.self());
+			msgs[chunkID] = new BytesPartMessage(msg, msgID, numChunks, chunkID, sender, receiver, this.self());
 			chunkID++;
 		}
+		receiverProxy.tell(msgs[0], this.self());
+		msgsToSend.put(msgID, msgs);
 	}
 
-	// Let it crash.
+	private void handle(ReceivedBytesPartMessage message){
+		BytesPartMessage[] msgs = msgsToSend.get(message.getMessageId());
+		if (message.getChunkId() == msgs.length - 1) {
+			msgsToSend.remove(message.getMessageId());
+		} else {
+			message.getSendingProxy().tell(msgs[message.getChunkId() + 1], this.self());
+		}
+
+	}
+
 	private void handle(BytesPartMessage message) throws IOException, ClassNotFoundException {
 		// New message.
 		String messageId = message.getMessageId();
 		if (!receivedBytePartLargeMessages.containsKey(messageId)) {
 			receivedBytePartLargeMessages.put(messageId, new byte[message.getNumChunks()][]);
-			numBytesReceived.put(messageId, 0);
 		}
 		byte[][] receivedBytePartMessages = receivedBytePartLargeMessages.get(messageId);
 		receivedBytePartMessages[message.getChunkId()] = message.getBytes();
-		Integer numBytesReceivedForMessage = numBytesReceived.get(messageId);
 
-		numBytesReceivedForMessage++;
 		// Received whole message.
-		if (numBytesReceivedForMessage == receivedBytePartMessages.length){
+		if (message.getChunkId() == receivedBytePartMessages.length - 1){
 			// Get large message byte size.
 			int msgSize = 0;
 			for (byte[] bytePartMessage : receivedBytePartMessages) {
@@ -156,9 +178,11 @@ public class LargeMessageProxy extends AbstractLoggingActor {
 
 			// Reset internal message buffer.
 			receivedBytePartLargeMessages.remove(messageId);
-			numBytesReceived.remove(messageId);
 			// Send large message.
 			message.getReceiver().tell(sendObject, message.getSender());
 		}
+		// Acknowledge receive.
+		// Better as the last step.
+		message.getSendingProxy().tell(new ReceivedBytesPartMessage(message.getMessageId(), message.getChunkId(), this.self()), this.self());
 	}
 }
